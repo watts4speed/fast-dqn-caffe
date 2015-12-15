@@ -45,7 +45,7 @@ double PlayOneEpisode(
     fast_dqn::Fast_DQN* dqn,
     const double epsilon,
     const bool update) {
-  assert(!ale.game_over());
+  assert(!ale->game_over());
   std::deque<fast_dqn::FrameDataSp> past_frames;
   auto total_score = 0.0;
   for (auto frame = 0; !ale->game_over(); ++frame) {
@@ -65,7 +65,7 @@ double PlayOneEpisode(
       if (past_frames.size() > fast_dqn::kInputFrameCount) {
         past_frames.pop_front();
       }
-      fast_dqn::InputFrames input_frames;
+      fast_dqn::State input_frames;
       std::copy(past_frames.begin(), past_frames.end(), input_frames.begin());
       const auto action = dqn->SelectAction(input_frames, epsilon);
       auto immediate_score = 0.0;
@@ -83,7 +83,7 @@ double PlayOneEpisode(
       if (update) {
         // Add the current transition to replay memory
         const auto transition = ale->game_over() ?
-            fast_dqn::Transition(input_frames, action, reward, boost::none) :
+            fast_dqn::Transition(input_frames, action, reward, nullptr) :
             fast_dqn::Transition(
                 input_frames,
                 action,

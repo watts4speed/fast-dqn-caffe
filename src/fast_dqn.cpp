@@ -1,6 +1,4 @@
 #include "fast_dqn.h"
-#include <boost/format.hpp>
-#include <boost/algorithm/string.hpp>
 #include <glog/logging.h>
 #include <algorithm>
 #include <iostream>
@@ -105,6 +103,25 @@ std::string PrintQValues(
   return actions_buf.str() + q_values_buf.str();
 }
 
+
+const State Transition::GetNextState() const {
+
+  //  Create the s(t+1) states from the experience(t)'s
+
+  if (next_frame_ == nullptr) {
+    // Terminal state so no next_observation, just return current state
+    return state_;
+  } else {
+    State state_clone;
+    
+    for (int i = 0; i < kInputFrameCount - 1; ++i)
+      state_clone[i] = state_[i + 1];
+    state_clone[kInputFrameCount - 1] = next_frame_;
+    return state_clone;
+  }
+
+}
+
 template <typename Dtype>
 bool HasBlobSize(
     const caffe::Blob<Dtype>& blob,
@@ -168,7 +185,7 @@ void Fast_DQN::Initialize() {
 }
 
 Action Fast_DQN::SelectAction(
-  const InputFrames& last_frames, const double epsilon) {
+  const State& last_frames, const double epsilon) {
   assert(epsilon >= 0.0 && epsilon <= 1.0);
   auto action = SelectActionGreedily(last_frames).first;
   bool random = true;
@@ -194,12 +211,12 @@ Action Fast_DQN::SelectAction(
 }
 
 std::pair<Action, float>Fast_DQN::SelectActionGreedily(
-  const InputFrames& last_frames) {
-  return SelectActionGreedily(std::vector<InputFrames>{{last_frames}}).front();
+  const State& last_frames) {
+  return SelectActionGreedily(std::vector<State>{{last_frames}}).front();
 }
 
 std::vector<std::pair<Action, float>> Fast_DQN::SelectActionGreedily(
-    const std::vector<InputFrames>& last_frames_batch) {
+    const std::vector<State>& last_frames_batch) {
   assert(last_frames_batch.size() <= kMinibatchSize);
   std::array<float, kMinibatchDataSize> frames_input;
   for (auto i = 0; i < last_frames_batch.size(); ++i) {
@@ -267,20 +284,14 @@ void Fast_DQN::Update() {
   }
 
   // Compute target values: max_a Q(s',a)
-  std::vector<InputFrames> target_last_frames_batch;
+  std::vector<State> target_last_frames_batch;
   for (const auto idx : transitions) {
     const auto& transition = replay_memory_[idx];
-    if (!std::get<3>(transition)) {
-      // This is a terminal state
+    if (transition.is_terminal()) {
       continue;
     }
-    // Compute target value
-    InputFrames target_last_frames;
-    for (auto i = 0; i < kInputFrameCount - 1; ++i) {
-      target_last_frames[i] = std::get<0>(transition)[i + 1];
-    }
-    target_last_frames[kInputFrameCount - 1] = std::get<3>(transition).get();
-    target_last_frames_batch.push_back(target_last_frames);
+    
+    target_last_frames_batch.push_back(transition.GetNextState());
   }
   const auto actions_and_values =
       SelectActionGreedily(target_last_frames_batch);
@@ -293,20 +304,20 @@ void Fast_DQN::Update() {
   auto target_value_idx = 0;
   for (auto i = 0; i < kMinibatchSize; ++i) {
     const auto& transition = replay_memory_[transitions[i]];
-    const auto action = std::get<1>(transition);
-    assert(static_cast<int>(action) < kOutputCount);
-    const auto reward = std::get<2>(transition);
+    const auto action = transition.GetAction();
+    const auto reward = transition.GetReward();
     assert(reward >= -1.0 && reward <= 1.0);
-    const auto target = std::get<3>(transition) ?
-          reward + gamma_ * actions_and_values[target_value_idx++].second :
-          reward;
+    const auto target = transition.is_terminal() ?
+          reward :
+          reward + gamma_ * actions_and_values[target_value_idx++].second;
     assert(!std::isnan(target));
     target_input[i * kOutputCount + static_cast<int>(action)] = target;
     filter_input[i * kOutputCount + static_cast<int>(action)] = 1;
     if (verbose_)
       VLOG(1) << "filter:" << action_to_string(action) << " target:" << target;
     for (auto j = 0; j < kInputFrameCount; ++j) {
-      const auto& frame_data = std::get<0>(transition)[j];
+      const State& state = transition.GetState();
+      const auto& frame_data = state[j];
       std::copy(
           frame_data->begin(),
           frame_data->end(),

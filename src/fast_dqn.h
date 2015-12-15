@@ -1,7 +1,6 @@
 #ifndef SRC_FAST_DQN_H_
 #define SRC_FAST_DQN_H_
 
-#include <boost/optional.hpp>
 #include <ale_interface.hpp>
 #include <caffe/caffe.hpp>
 #include <memory>
@@ -29,13 +28,44 @@ constexpr auto kOutputCount = 18;
 
 using FrameData = std::array<uint8_t, kCroppedFrameDataSize>;
 using FrameDataSp = std::shared_ptr<FrameData>;
-using InputFrames = std::array<FrameDataSp, 4>;
-using Transition = std::tuple<
-  InputFrames, Action, float, boost::optional<FrameDataSp>>;
+using State = std::array<FrameDataSp, kInputFrameCount>;
+
 
 using FramesLayerInputData = std::array<float, kMinibatchDataSize>;
 using TargetLayerInputData = std::array<float, kMinibatchSize * kOutputCount>;
 using FilterLayerInputData = std::array<float, kMinibatchSize * kOutputCount>;
+
+/**
+  * Transition
+  */
+class Transition {
+ public:
+
+  Transition ( const State state, Action action,
+                double reward, FrameDataSp next_frame ) :
+      state_ ( state ),
+      action_ ( action ),
+      reward_ ( reward ),
+      next_frame_ ( next_frame ) {
+  }
+
+  bool is_terminal() const { return next_frame_ == nullptr; } 
+  
+  const State GetNextState() const;
+  
+  const State& GetState() const { return state_; }
+  
+  Action GetAction() const { return action_; }
+  
+  double GetReward() const { return reward_; }
+
+ private:
+    const State state_;
+    Action action_;
+    double reward_;
+    FrameDataSp next_frame_;
+};
+typedef std::shared_ptr<Transition> TransitionSp;
 
 /**
  * Deep Q-Network
@@ -68,7 +98,7 @@ class Fast_DQN {
   /**
    * Select an action by epsilon-greedy.
    */
-  Action SelectAction(const InputFrames& input_frames, double epsilon);
+  Action SelectAction(const State& input_frames, double epsilon);
 
   /**
    * Add a transition to replay memory
@@ -93,9 +123,9 @@ class Fast_DQN {
   using BlobSp = boost::shared_ptr<caffe::Blob<float>>;
   using MemoryDataLayerSp = boost::shared_ptr<caffe::MemoryDataLayer<float>>;
 
-  std::pair<Action, float> SelectActionGreedily(const InputFrames& last_frames);
+  std::pair<Action, float> SelectActionGreedily(const State& last_frames);
   std::vector<std::pair<Action, float>> SelectActionGreedily(
-      const std::vector<InputFrames>& last_frames);
+      const std::vector<State>& last_frames);
   void InputDataIntoLayers(
       const FramesLayerInputData& frames_data,
       const TargetLayerInputData& target_data,
