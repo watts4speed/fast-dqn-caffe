@@ -1,8 +1,8 @@
 fast-dqn-caffe
 ==
-An optimized C++ Deep Q-Network (DQN) implementation for caffe.
+An optimized C++ Deep Q-Network (DQN) implementation for Caffe.
 
-The goal is to provide a fast version of DQN that works with relatively little setup.  Where possible reproducing Deepmind's results is desirable, especially for making comparisons, though the priority is on speed, since speed is a substantial practical barrier to the use of reenforcement learning for practical applications.
+The goal is to provide a fast version of DQN that works with relatively little setup.  Where possible, reproducing Deepmind's results is desirable, especially for making comparisons. Still the priority is on speed, since speed is a substantial barrier to the use of reenforcement learning for practical applications.
 
 Original code by [muupan/dqn-in-the-caffe](https://github.com/muupan/dqn-in-the-caffe) with cherry picking from 
 [mhauskn/dqn/recurrent](https://github.com/mhauskn/dqn/tree/recurrent)
@@ -16,7 +16,7 @@ Original code by [muupan/dqn-in-the-caffe](https://github.com/muupan/dqn-in-the-
 
 Note:
 **fast_dqn** doesn't work with the current head of caffe/master since
-something changed since September 2015 that blows up the net during training.  Let me know if you find the problem, or it works for you.
+something changed since September 2015 that blows up the net during training.  Let me know if you find the problem, or if the current code works for you.
 
 To date **fast_dqn** has only been tested on ubuntu 15.10.
 
@@ -26,7 +26,7 @@ and CU toolkit v7.5.
 
 ###Required ALE patch to help speed things up.
 
-The ALE folks are working on adding to the C++ API the same function to convert images to grayscale that is in Python.  They haven't decided on a final version of the PR yet so we use the patch below.
+The ALE folks are working on adding to the C++ API the same method to convert images to grayscale that is in Python.  They haven't decided on a final version of the PR yet so we use our own patch for now.
 
 ```
 diff --git a/src/ale_interface.cpp b/src/ale_interface.cpp
@@ -77,7 +77,8 @@ cd ..
 
 
 ##To run:
-- Before running be sure and download one of the ALE supported roms otherwise ALE will crash.
+- Besure you're only running ALE **supported** roms otherwise ALE will crash.
+- You should also have a version of pong.bin to validate the build.
 
 - Create the directory "model" in the **fast_dqn** root directory.  This is where training snapshots are placed.
 
@@ -98,7 +99,7 @@ build/dqn -rom ~/roms/pong.bin
 ```
 
 
-The plot will update every 15 seconds or so, showing a moving average of the game scores.  It also writes tran_progress.png which also contains the
+The plot will update every 15 seconds or so, showing a moving average of the game scores.  It also writes ./tran_progress.png which also contains the
 same plot.  If you leave the plotting program running across multiple training sessions the plot will contain previous runs along with the latest run.  This is helpful when trying stuff out.
 
 ![plot of training](tran_progress-example.png)
@@ -115,7 +116,7 @@ the loss being clipped.  My experience is that if continuous clipping of the the
 If your plot for pong looks similar to the above then you're probably in good shape.
 
 My suggestion is to test changes to the code against pong to make sure
-you haven't broken anything.  It's really easy to do and I've waisted
+you haven't broken anything.  It's really easy to do and I've wasted
 way too much time having done so due to simple bugs.
 
 My approach is to take careful steps and verify new stuff against the pong baseline.
