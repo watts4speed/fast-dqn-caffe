@@ -116,7 +116,7 @@ the loss being clipped.  My experience is that if continuous clipping of the the
 If your plot for pong looks similar to the above then you're probably in good shape.
 
 My suggestion is to test changes to the code against pong to make sure
-you haven't broken anything.  It's really easy to do and I've waisted
+you haven't broken anything.  It's really easy to do and I've wasted
 way too much time having done so due to simple bugs.
 
 My approach is to take careful steps and verify new stuff against the pong baseline.
