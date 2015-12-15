@@ -1,6 +1,6 @@
 fast-dqn-caffe
 ==
-An optimized C++ Deep Q-Network (DQN) implementation for caffe.
+An optimized C++ Deep Q-Network (DQN) implementation for Caffe.
 
 The goal is to provide a fast version of DQN that works with relatively little setup.  Where possible reproducing Deepmind's results is desirable, especially for making comparisons, though the priority is on speed, since speed is a substantial practical barrier to the use of reenforcement learning for practical applications.
 
