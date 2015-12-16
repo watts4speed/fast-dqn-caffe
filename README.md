@@ -152,7 +152,7 @@ of the algorithms things should get better still.
 
 Currently the code implements replay_memory from the original paper [pdf](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf).  
 
-It also implements the target_network freezing in the "Nature Paper."
+It also implements the target_network freezing from the "Nature Paper."
 [pdf](http://www.nature.com/nature/journal/v518/n7540/full/nature14236.html)
 
 Next steps would be to add additional features as per Deepmind's published papers, 
