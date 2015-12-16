@@ -123,16 +123,15 @@ const State Transition::GetNextState() const {
 }
 
 template <typename Dtype>
-bool HasBlobSize(
-    const caffe::Blob<Dtype>& blob,
-    const int num,
-    const int channels,
-    const int height,
-    const int width) {
-  return blob.num() == num &&
-      blob.channels() == channels &&
-      blob.height() == height &&
-      blob.width() == width;
+void HasBlobSize(caffe::Net<Dtype>& net,
+                 const std::string& blob_name,
+                 const std::vector<int> expected_shape) {
+  net.has_blob(blob_name);
+  const caffe::Blob<Dtype>& blob = *net.blob_by_name(blob_name);
+  const std::vector<int>& blob_shape = blob.shape();
+  CHECK_EQ(blob_shape.size(), expected_shape.size());
+  CHECK(std::equal(blob_shape.begin(), blob_shape.end(),
+                   expected_shape.begin()));
 }
 
 void Fast_DQN::LoadTrainedModel(const std::string& model_bin) {
@@ -140,9 +139,14 @@ void Fast_DQN::LoadTrainedModel(const std::string& model_bin) {
 }
 
 void Fast_DQN::Initialize() {
+
+  // Initialize dummy input data with 0
+  std::fill(dummy_input_data_.begin(), dummy_input_data_.end(), 0.0);
+
   // Initialize net and solver
   caffe::SolverParameter solver_param;
   caffe::ReadProtoFromTextFileOrDie(solver_param_, &solver_param);
+
   solver_.reset(caffe::GetSolver<float>(solver_param));
 
   // New solver creation API.  Caution, caffe master current doesn't
@@ -152,71 +156,59 @@ void Fast_DQN::Initialize() {
   // solver_.reset(caffe::SolverRegistry<float>::CreateSolver(solver_param));
 
   net_ = solver_->net();
+  InitNet(net_);
 
-  // Cache pointers to blobs that hold Q values
-  q_values_blob_ = net_->blob_by_name("q_values");
+  CloneTrainingNetToTargetNet();
 
-  // Initialize dummy input data with 0
-  std::fill(dummy_input_data_.begin(), dummy_input_data_.end(), 0.0);
+  // Check the primary network
+  HasBlobSize(*net_, train_frames_blob_name, {kMinibatchSize,
+          kInputFrameCount, kCroppedFrameSize, kCroppedFrameSize});
+  HasBlobSize(*net_, target_blob_name, {kMinibatchSize,kOutputCount,1,1});
+  HasBlobSize(*net_, filter_blob_name, {kMinibatchSize,kOutputCount,1,1});
 
-  // Cache pointers to input layers
-  frames_input_layer_ =
-      boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
-          net_->layer_by_name("frames_input_layer"));
-  assert(frames_input_layer_);
-  assert(HasBlobSize(
-      *net_->blob_by_name("frames"),
-      kMinibatchSize,
-      kInputFrameCount,
-      kCroppedFrameSize,
-      kCroppedFrameSize));
-  target_input_layer_ =
-      boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
-          net_->layer_by_name("target_input_layer"));
-  assert(target_input_layer_);
-  assert(HasBlobSize(
-      *net_->blob_by_name("target"), kMinibatchSize, kOutputCount, 1, 1));
-  filter_input_layer_ =
-      boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
-          net_->layer_by_name("filter_input_layer"));
-  assert(filter_input_layer_);
-  assert(HasBlobSize(
-      *net_->blob_by_name("filter"), kMinibatchSize, kOutputCount, 1, 1));
+
+  LOG(INFO) << "Finished " << net_->name() << " Initialization";
 }
 
-Action Fast_DQN::SelectAction(
-  const State& last_frames, const double epsilon) {
-  assert(epsilon >= 0.0 && epsilon <= 1.0);
-  auto action = SelectActionGreedily(last_frames).first;
-  bool random = true;
+
+Action Fast_DQN::SelectAction(const State& frames, const double epsilon) {
+  return SelectActions(InputStateBatch{{frames}}, epsilon)[0];
+}
+
+ActionVect Fast_DQN::SelectActions(const InputStateBatch& frames_batch,
+                              const double epsilon) {
+  CHECK(epsilon <= 1.0 && epsilon >= 0.0);
+  CHECK_LE(frames_batch.size(), kMinibatchSize);
+  ActionVect actions(frames_batch.size());
   if (std::uniform_real_distribution<>(0.0, 1.0)(random_engine_) < epsilon) {
     // Select randomly
-    const auto random_idx =
-        std::uniform_int_distribution<int>(
-          0, legal_actions_.size() - 1)(random_engine_);
-    action = legal_actions_[random_idx];
+    for (int i = 0; i < actions.size(); ++i) {
+      const auto random_idx = std::uniform_int_distribution<int>
+          (0, legal_actions_.size() - 1)(random_engine_);
+      actions[i] = legal_actions_[random_idx];
+    }
   } else {
-    random = false;
+    // Select greedily
+    std::vector<ActionValue> actions_and_values =
+        SelectActionGreedily(target_net_, frames_batch);
+    CHECK_EQ(actions_and_values.size(), actions.size());
+    for (int i=0; i<actions_and_values.size(); ++i) {
+      actions[i] = actions_and_values[i].action;
+    }
   }
-  if (verbose_) {
-    if (random)
-      LOG(INFO)  << action_to_string(action)
-        << " (random)  epsilon:" << epsilon;
-    else
-      LOG(INFO)  << action_to_string(action)
-        << " (greedy)  epsilon:" << epsilon;
-  }
-
-  return action;
+  return actions;
 }
 
-std::pair<Action, float>Fast_DQN::SelectActionGreedily(
+
+ActionValue Fast_DQN::SelectActionGreedily(
+  NetSp net,
   const State& last_frames) {
-  return SelectActionGreedily(std::vector<State>{{last_frames}}).front();
+  return SelectActionGreedily(net, InputStateBatch{{last_frames}}).front();
 }
 
-std::vector<std::pair<Action, float>> Fast_DQN::SelectActionGreedily(
-    const std::vector<State>& last_frames_batch) {
+std::vector<ActionValue> Fast_DQN::SelectActionGreedily(
+    NetSp net,
+    const InputStateBatch& last_frames_batch) {
   assert(last_frames_batch.size() <= kMinibatchSize);
   std::array<float, kMinibatchDataSize> frames_input;
   for (auto i = 0; i < last_frames_batch.size(); ++i) {
@@ -230,15 +222,17 @@ std::vector<std::pair<Action, float>> Fast_DQN::SelectActionGreedily(
               j * kCroppedFrameDataSize);
     }
   }
-  InputDataIntoLayers(frames_input, dummy_input_data_, dummy_input_data_);
-  net_->ForwardPrefilled(nullptr);
+  InputDataIntoLayers(net, frames_input, dummy_input_data_, dummy_input_data_);
+  net->ForwardPrefilled(nullptr);
 
-  std::vector<std::pair<Action, float>> results;
+  std::vector<ActionValue> results;
   results.reserve(last_frames_batch.size());
+  CHECK(net->has_blob(q_values_blob_name));
+  const auto q_values_blob = net->blob_by_name(q_values_blob_name);
   for (auto i = 0; i < last_frames_batch.size(); ++i) {
     // Get the Q values from the net
     const auto action_evaluator = [&](Action action) {
-      const auto q = q_values_blob_->data_at(i, static_cast<int>(action), 0, 0);
+      const auto q = q_values_blob->data_at(i, static_cast<int>(action), 0, 0);
       assert(!std::isnan(q));
       return q;
     };
@@ -273,6 +267,13 @@ void Fast_DQN::Update() {
   if (verbose_)
     LOG(INFO) << "iteration: " << current_iteration() << std::endl;
 
+  // Every clone_iters steps, update the clone_net_
+  if (current_iteration() >= last_clone_iter_ + clone_frequency_) {
+    LOG(INFO) << "Iter " << current_iteration() << ": Updating Clone Net";
+    CloneTrainingNetToTargetNet();
+    last_clone_iter_ = current_iteration();
+  }
+
   // Sample transitions from replay memory
   std::vector<int> transitions;
   transitions.reserve(kMinibatchSize);
@@ -290,11 +291,13 @@ void Fast_DQN::Update() {
     if (transition.is_terminal()) {
       continue;
     }
-    
+
     target_last_frames_batch.push_back(transition.GetNextState());
   }
+
+    // Get the next state QValues
   const auto actions_and_values =
-      SelectActionGreedily(target_last_frames_batch);
+      SelectActionGreedily(target_net_, target_last_frames_batch);
 
   FramesLayerInputData frames_input;
   TargetLayerInputData target_input;
@@ -309,7 +312,7 @@ void Fast_DQN::Update() {
     assert(reward >= -1.0 && reward <= 1.0);
     const auto target = transition.is_terminal() ?
           reward :
-          reward + gamma_ * actions_and_values[target_value_idx++].second;
+          reward + gamma_ * actions_and_values[target_value_idx++].q_value;
     assert(!std::isnan(target));
     target_input[i * kOutputCount + static_cast<int>(action)] = target;
     filter_input[i * kOutputCount + static_cast<int>(action)] = 1;
@@ -325,7 +328,7 @@ void Fast_DQN::Update() {
               j * kCroppedFrameDataSize);
     }
   }
-  InputDataIntoLayers(frames_input, target_input, filter_input);
+  InputDataIntoLayers(net_, frames_input, target_input, filter_input);
   solver_->Step(1);
   // Log the first parameter of each hidden layer
 //   VLOG(1) << "conv1:" <<
@@ -338,22 +341,67 @@ void Fast_DQN::Update() {
 //     net_->layer_by_name("ip2_layer")->blobs().front()->data_at(1, 0, 0, 0);
 }
 
-void Fast_DQN::InputDataIntoLayers(
+void Fast_DQN::InitNet(NetSp net) {
+    const auto target_input_layer =
+        boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
+            net->layer_by_name(target_layer_name));
+    CHECK(target_input_layer);
+    target_input_layer->Reset(const_cast<float*>(dummy_input_data_.data()),
+                              const_cast<float*>(dummy_input_data_.data()),
+                              target_input_layer->batch_size());
+    const auto filter_input_layer =
+        boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
+            net->layer_by_name(filter_layer_name));
+    CHECK(filter_input_layer);
+    filter_input_layer->Reset(const_cast<float*>(dummy_input_data_.data()),
+                              const_cast<float*>(dummy_input_data_.data()),
+                              filter_input_layer->batch_size());
+}
+
+void Fast_DQN::CloneNet(NetSp net) {
+  caffe::NetParameter net_param;
+  net->ToProto(&net_param);
+  net_param.mutable_state()->set_phase(net->phase());
+  if (target_net_ == nullptr) {
+    target_net_.reset(new caffe::Net<float>(net_param));
+  } else {
+    target_net_->CopyTrainedLayersFrom(net_param);
+  }
+  InitNet(target_net_);
+}
+
+
+void Fast_DQN::InputDataIntoLayers(NetSp net,
       const FramesLayerInputData& frames_input,
       const TargetLayerInputData& target_input,
       const FilterLayerInputData& filter_input) {
-  frames_input_layer_->Reset(
-      const_cast<float*>(frames_input.data()),
-      dummy_input_data_.data(),
-      kMinibatchSize);
-  target_input_layer_->Reset(
-      const_cast<float*>(target_input.data()),
-      dummy_input_data_.data(),
-      kMinibatchSize);
-  filter_input_layer_->Reset(
-      const_cast<float*>(filter_input.data()),
-      dummy_input_data_.data(),
-      kMinibatchSize);
+
+  const auto frames_input_layer =
+      boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
+          net->layer_by_name(frames_layer_name));
+  CHECK(frames_input_layer);
+
+  frames_input_layer->Reset(const_cast<float*>(frames_input.data()),
+                            const_cast<float*>(frames_input.data()),
+                            frames_input_layer->batch_size());
+
+  if (net == net_) { // training net?
+    const auto target_input_layer =
+        boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
+            net->layer_by_name(target_layer_name));
+    CHECK(target_input_layer);
+    target_input_layer->Reset(const_cast<float*>(target_input.data()),
+                              const_cast<float*>(target_input.data()),
+                              target_input_layer->batch_size());
+    const auto filter_input_layer =
+        boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
+            net->layer_by_name(filter_layer_name));
+    CHECK(filter_input_layer);
+    filter_input_layer->Reset(const_cast<float*>(filter_input.data()),
+                              const_cast<float*>(filter_input.data()),
+                              filter_input_layer->batch_size());
+  }
+
 }
 
 }  // namespace fast_dqn

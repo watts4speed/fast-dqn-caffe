@@ -1,14 +1,14 @@
 net: "models/fast_dqn.prototxt"
 solver_type: ADADELTA
 momentum: 0.90
-base_lr: 0.2
+base_lr: 0.1
 lr_policy: "step"
-gamma: 0.1
+gamma: 0.5
 stepsize: 1000000
 max_iter: 2000000
 display: 1000000
 
 # you should only see a lot of clip message a the beginning of training
-# for about a second, otherwise occationally you'll see some if things
+# for about a second, otherwise occasionally you'll see some if things
 # are working
 clip_gradients: 10

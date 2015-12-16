@@ -26,14 +26,35 @@ constexpr auto kMinibatchDataSize = kInputDataSize * kMinibatchSize;
 constexpr auto kGamma = 0.95f;
 constexpr auto kOutputCount = 18;
 
+constexpr auto frames_layer_name = "frames_input_layer";
+constexpr auto target_layer_name = "target_input_layer";
+constexpr auto filter_layer_name = "filter_input_layer";
+
+constexpr auto train_frames_blob_name = "frames";
+constexpr auto test_frames_blob_name  = "all_frames";
+constexpr auto target_blob_name       = "target";
+constexpr auto filter_blob_name       = "filter";
+constexpr auto q_values_blob_name     = "q_values";
+
 using FrameData = std::array<uint8_t, kCroppedFrameDataSize>;
 using FrameDataSp = std::shared_ptr<FrameData>;
 using State = std::array<FrameDataSp, kInputFrameCount>;
+using InputStateBatch = std::vector<State>;
 
 
 using FramesLayerInputData = std::array<float, kMinibatchDataSize>;
 using TargetLayerInputData = std::array<float, kMinibatchSize * kOutputCount>;
 using FilterLayerInputData = std::array<float, kMinibatchSize * kOutputCount>;
+
+
+typedef struct ActionValue {
+  ActionValue(const Action _action, const float _q_value) : 
+    action(_action), q_value(_q_value) {
+    }
+  const Action action;
+  const float q_value;
+} ActionValue;
+
 
 /**
   * Transition
@@ -83,7 +104,10 @@ class Fast_DQN {
         replay_memory_capacity_(replay_memory_capacity),
         gamma_(gamma),
         verbose_(verbose),
-        random_engine_(0) {}
+        random_engine_(0), 
+        clone_frequency_(10000), // How often (steps) the target_net_ is updated
+        last_clone_iter_(0) {   // Iteration in which the net was last cloned
+        }
 
   /**
    * Initialize DQN. Must be called before calling any other method.
@@ -113,6 +137,11 @@ class Fast_DQN {
   int memory_size() const { return replay_memory_.size(); }
 
   /**
+   * Copy the current training net_ to the target_net_
+   */
+    void CloneTrainingNetToTargetNet() { CloneNet(net_); }
+
+  /**
    * Return the current iteration of the solver
    */
   int current_iteration() const { return solver_->iter(); }
@@ -123,26 +152,47 @@ class Fast_DQN {
   using BlobSp = boost::shared_ptr<caffe::Blob<float>>;
   using MemoryDataLayerSp = boost::shared_ptr<caffe::MemoryDataLayer<float>>;
 
-  std::pair<Action, float> SelectActionGreedily(const State& last_frames);
-  std::vector<std::pair<Action, float>> SelectActionGreedily(
-      const std::vector<State>& last_frames);
-  void InputDataIntoLayers(
+
+  ActionVect SelectActions(const InputStateBatch& frames_batch,
+                              const double epsilon);
+  ActionValue SelectActionGreedily(NetSp net,
+                                   const State& last_frames);
+  std::vector<ActionValue> SelectActionGreedily(NetSp,
+                                   const InputStateBatch& last_frames);
+
+  /**
+    * Clone the given net and store the result in clone_net_
+    */
+  void CloneNet(NetSp net);
+  
+  /**
+   * Init the target and filter layers.
+   */
+  void InitNet(NetSp net);
+
+  /**
+    * Input data into the Frames/Target/Filter layers of the given
+    * net. This must be done before forward is called.
+    */
+  void InputDataIntoLayers(NetSp net,
       const FramesLayerInputData& frames_data,
       const TargetLayerInputData& target_data,
       const FilterLayerInputData& filter_data);
 
   const ActionVect legal_actions_;
-  const std::string solver_param_;
   const int replay_memory_capacity_;
   const double gamma_;
   std::deque<Transition> replay_memory_;
-  SolverSp solver_;
-  NetSp net_;
-  BlobSp q_values_blob_;
-  MemoryDataLayerSp frames_input_layer_;
-  MemoryDataLayerSp target_input_layer_;
-  MemoryDataLayerSp filter_input_layer_;
   TargetLayerInputData dummy_input_data_;
+
+  const std::string solver_param_;
+  SolverSp solver_;
+  NetSp net_; // The primary network used for action selection.
+  NetSp target_net_; // Clone used to generate targets.
+  const int clone_frequency_; // How often (steps) the target_net is updated
+  int last_clone_iter_; // Iteration in which the net was last cloned
+
+  
   std::mt19937 random_engine_;
   bool verbose_;
 };
