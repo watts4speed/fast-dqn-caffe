@@ -119,7 +119,7 @@ My suggestion is to test changes to the code against pong to make sure
 you haven't broken anything.  It's really easy to do and I've wasted
 way too much time having done so due to simple bugs.
 
-My approach is to take careful steps and verify new stuff against the pong baseline.
+My approach is to take careful steps and verify new stuff against the pong baseline first.
 
 ###Example training log:
 ```
@@ -150,6 +150,10 @@ of the algorithms things should get better still.
 
 #Other directions:
 
-Currently the code only implements replay_memory from the original paper [pdf](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf).  Next steps would be to add additional features as per Deepmind's published papers, 
-and also do more performance work.
+Currently the code implements replay_memory from the original paper [pdf](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf).  
 
+It also implements the target_network freezing in the "Nature Paper."
+[pdf](http://www.nature.com/nature/journal/v518/n7540/full/nature14236.html)
+
+Next steps would be to add additional features as per Deepmind's published papers, 
+and also do more performance work.
