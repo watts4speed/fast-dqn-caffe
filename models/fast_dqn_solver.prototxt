@@ -12,3 +12,7 @@ display: 1000000
 # for about a second, otherwise occasionally you'll see some if things
 # are working
 clip_gradients: 10
+
+# snapshot intermediate results
+snapshot: 1000000
+snapshot_prefix: "model/dqn"

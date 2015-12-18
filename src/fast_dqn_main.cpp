@@ -59,10 +59,6 @@ double PlayOneEpisode(
     past_frames.push_back(current_frame);
     if (past_frames.size() < fast_dqn::kInputFrameCount) {
       // If there are not past frames enough for DQN input, just select NOOP
-//       for (auto i = 0; i < FLAGS_skip_frame + 1 && 
-//         !environmentSp->EpisodeOver(); ++i) {
-//         total_score += ale->act(PLAYER_A_NOOP);
-//       }
       environmentSp->ActNoop();
     } else {
       if (past_frames.size() > fast_dqn::kInputFrameCount) {
@@ -71,15 +67,9 @@ double PlayOneEpisode(
       fast_dqn::State input_frames;
       std::copy(past_frames.begin(), past_frames.end(), input_frames.begin());
       const auto action = dqn->SelectAction(input_frames, epsilon);
-//       auto immediate_score = 0.0;
-//       for (auto i = 0; i < FLAGS_skip_frame + 1 && !ale->game_over(); ++i) {
-//         // Last action is repeated on skipped frames
-//         immediate_score += ale->act(action);
-//       }
-//       total_score += immediate_score;
 
-        auto immediate_score = environmentSp->Act(action);
-        total_score += immediate_score;
+      auto immediate_score = environmentSp->Act(action);
+      total_score += immediate_score;
 
 
       // Rewards for DQN are normalized as follows:
