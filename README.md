@@ -146,11 +146,10 @@ I1214 15:18:37.474827 25637 fast_dqn_main.cpp:174] training score(109): -21
 In talking to [github.com/mhauskn](https://github.com/mhauskn) the speed of training is still a really big issue for deep reinforcement learning from his experience and it takes a couple weeks to train up some of the more complex networks.
 
 The current code with a single Titan-X on an X99 workstation can do 
-about 1/2 million training steps in about 1 hour.  If it could use the head 
-of caffe/master then it would go about 3/4 million steps per hour.
+about 1/2 million training steps in about 1 hour.
 
 The Titan is only about 1/2 utilized so things are still CPU bound which
-with the appropriate a multi-threaded scheme could be fixed.  So initially there's a possible 4.5x
+with the appropriate a multi-threaded scheme could be fixed.  So initially there's a possible maybe 3x
 performance improvement over the original code before starting to play games with GPU optimization.
 
 Given Deepmind has also been busy working on improving the efficiency
@@ -158,7 +157,7 @@ of the algorithms things should get better still.
 
 #Environment abstraction
 
-An abstract class "Environment" has been defined that can be used to plug in other game environments or systems to train on.  It's in the file src/environment.h.  The current version  implements the ALE environment using that abstraction.  The Environment class could be extended to support more complext actions.
+An abstract class "Environment" has been defined that can be used to plug in other game environments or systems to train on.  It's in the file src/environment.h.  The current version  implements the ALE environment using that abstraction.  The Environment class could be extended to support more complex actions.
 
 #Other directions
 
