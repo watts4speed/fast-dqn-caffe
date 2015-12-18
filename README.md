@@ -7,7 +7,7 @@ The goal is to provide a fast version of DQN that works with relatively little s
 Original code by [muupan/dqn-in-the-caffe](https://github.com/muupan/dqn-in-the-caffe) with cherry picking from 
 [mhauskn/dqn/recurrent](https://github.com/mhauskn/dqn/tree/recurrent)
 
-##Requirements:
+##Requirements
 
 
 - Caffe, **commit: ff16f6e43dd718921e5203f640dd57c68f01cdb3**
@@ -66,7 +66,7 @@ index 5f807a2..0cedb65 100644
 ```
 
 
-##To build:
+##To build
 ```
 mkdir build
 cd build
@@ -76,7 +76,8 @@ cd ..
 ```
 
 
-##To run:
+##To run
+
 - Besure you're only running ALE **supported** roms otherwise ALE will crash.
 - You should also have a version of pong.bin to validate the build.
 
@@ -114,7 +115,7 @@ The models are snapshoted into the subdirectory ./model.  To run a trained model
 build/dqn -rom ~/roms/pong.bin -evaluate -gui -model ~/model/dqn_iter_1000000.caffemodel
 ```
 
-##Training details:
+##Training details
 
 During training the loss is clipped to 10.
 After a few seconds of running you should see few messages about
@@ -129,7 +130,7 @@ way too much time having done so due to simple bugs.
 
 My approach is to take careful steps and verify new stuff against the pong baseline first.
 
-###Example training log:
+###Example training log
 ```
 I1214 15:18:15.946360 25637 fast_dqn_main.cpp:174] training score(106): -21
 I1214 15:18:23.908684 25637 fast_dqn_main.cpp:174] training score(107): -20
@@ -140,7 +141,7 @@ I1214 15:18:37.474827 25637 fast_dqn_main.cpp:174] training score(109): -21
 ```
 
 
-##Performance:
+##Performance
 
 In talking to [github.com/mhauskn](https://github.com/mhauskn) the speed of training is still a really big issue for deep reinforcement learning from his experience and it takes a couple weeks to train up some of the more complex networks.
 
@@ -155,8 +156,11 @@ performance improvement over the original code before starting to play games wit
 Given Deepmind has also been busy working on improving the efficiency
 of the algorithms things should get better still.
 
+#Environment abstraction
 
-#Other directions:
+An abstract class "Environment" has been defined that can be used to plug in other game environments or systems to train on.  It's in the file src/environment.h.  The current version  implements the ALE environment using that abstraction.  The Environment class could be extended to support more complext actions.
+
+#Other directions
 
 Currently the code implements replay_memory from the original paper [pdf](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf).  
 
@@ -165,3 +169,4 @@ It also implements the target_network freezing from the "Nature Paper."
 
 Next steps would be to add additional features as per Deepmind's published papers, 
 and also do more performance work.
+
