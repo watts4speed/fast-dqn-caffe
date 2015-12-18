@@ -1,4 +1,5 @@
 #include "fast_dqn.h"
+#include "environment.h"
 #include <ale_interface.hpp>
 #include <glog/logging.h>
 #include <gflags/gflags.h>
@@ -41,26 +42,28 @@ double CalculateEpsilon(const int iter) {
  * Play one episode and return the total score
  */
 double PlayOneEpisode(
-    ALEInterface* ale,
+    fast_dqn::EnvironmentSp environmentSp,
     fast_dqn::Fast_DQN* dqn,
     const double epsilon,
     const bool update) {
-  assert(!ale->game_over());
+  assert(!environmentSp->EpisodeOver());
   std::deque<fast_dqn::FrameDataSp> past_frames;
   auto total_score = 0.0;
-  for (auto frame = 0; !ale->game_over(); ++frame) {
+  for (auto frame = 0; !environmentSp->EpisodeOver(); ++frame) {
     if (FLAGS_verbose)
       LOG(INFO) << "frame: " << frame;
-    const auto current_frame = fast_dqn::PreprocessScreen(ale);
-    if (FLAGS_show_frame) {
-      std::cout << fast_dqn::DrawFrame(*current_frame);
-    }
+    const auto current_frame = environmentSp->PreprocessScreen();
+//     if (FLAGS_show_frame) {
+//       std::cout << fast_dqn::DrawFrame(*current_frame);
+//     }
     past_frames.push_back(current_frame);
     if (past_frames.size() < fast_dqn::kInputFrameCount) {
       // If there are not past frames enough for DQN input, just select NOOP
-      for (auto i = 0; i < FLAGS_skip_frame + 1 && !ale->game_over(); ++i) {
-        total_score += ale->act(PLAYER_A_NOOP);
-      }
+//       for (auto i = 0; i < FLAGS_skip_frame + 1 && 
+//         !environmentSp->EpisodeOver(); ++i) {
+//         total_score += ale->act(PLAYER_A_NOOP);
+//       }
+      environmentSp->ActNoop();
     } else {
       if (past_frames.size() > fast_dqn::kInputFrameCount) {
         past_frames.pop_front();
@@ -68,12 +71,17 @@ double PlayOneEpisode(
       fast_dqn::State input_frames;
       std::copy(past_frames.begin(), past_frames.end(), input_frames.begin());
       const auto action = dqn->SelectAction(input_frames, epsilon);
-      auto immediate_score = 0.0;
-      for (auto i = 0; i < FLAGS_skip_frame + 1 && !ale->game_over(); ++i) {
-        // Last action is repeated on skipped frames
-        immediate_score += ale->act(action);
-      }
-      total_score += immediate_score;
+//       auto immediate_score = 0.0;
+//       for (auto i = 0; i < FLAGS_skip_frame + 1 && !ale->game_over(); ++i) {
+//         // Last action is repeated on skipped frames
+//         immediate_score += ale->act(action);
+//       }
+//       total_score += immediate_score;
+
+        auto immediate_score = environmentSp->Act(action);
+        total_score += immediate_score;
+
+
       // Rewards for DQN are normalized as follows:
       // 1 for any positive score, -1 for any negative score, otherwise 0
       const auto reward =
@@ -82,13 +90,13 @@ double PlayOneEpisode(
               immediate_score /= std::abs(immediate_score);
       if (update) {
         // Add the current transition to replay memory
-        const auto transition = ale->game_over() ?
+        const auto transition = environmentSp->EpisodeOver() ?
             fast_dqn::Transition(input_frames, action, reward, nullptr) :
             fast_dqn::Transition(
                 input_frames,
                 action,
                 reward,
-                fast_dqn::PreprocessScreen(ale));
+                environmentSp->PreprocessScreen());
         dqn->AddTransition(transition);
         // If the size of replay memory is enough, update DQN
         if (dqn->memory_size() > FLAGS_memory_threshold) {
@@ -97,7 +105,7 @@ double PlayOneEpisode(
       }
     }
   }
-  ale->reset_game();
+  environmentSp->Reset();
   return total_score;
 }
 
@@ -113,16 +121,15 @@ int main(int argc, char** argv) {
     caffe::Caffe::set_mode(caffe::Caffe::CPU);
   }
 
-  ALEInterface ale(FLAGS_gui);
-
-  // Load the ROM file
-  ale.loadROM(FLAGS_rom);
+  fast_dqn::EnvironmentSp environmentSp =
+    fast_dqn::CreateEnvironment(FLAGS_gui, FLAGS_rom);
 
   // Get the vector of legal actions
-  const auto legal_actions = ale.getMinimalActionSet();
+  const fast_dqn::Environment::ActionVec legal_actions = 
+    environmentSp->GetMinimalActionSet();
 
-  fast_dqn::Fast_DQN dqn(legal_actions, FLAGS_solver, FLAGS_memory, FLAGS_gamma,
-    FLAGS_verbose);
+  fast_dqn::Fast_DQN dqn(environmentSp, legal_actions, FLAGS_solver, 
+                         FLAGS_memory, FLAGS_gamma, FLAGS_verbose);
 
   dqn.Initialize();
 
@@ -137,7 +144,7 @@ int main(int argc, char** argv) {
     for (auto i = 0; i < FLAGS_repeat_games; ++i) {
       LOG(INFO) << "game: ";
       const auto score =
-          PlayOneEpisode(&ale, &dqn, FLAGS_evaluate_with_epsilon, false);
+          PlayOneEpisode(environmentSp, &dqn, FLAGS_evaluate_with_epsilon, false);
       LOG(INFO) << "score: " << score;
       total_score += score;
     }
@@ -166,7 +173,7 @@ int main(int argc, char** argv) {
 
     epoch_episode_count++;
     const auto epsilon = CalculateEpsilon(dqn.current_iteration());
-    auto train_score = PlayOneEpisode(&ale, &dqn, epsilon, true);
+    auto train_score = PlayOneEpisode(environmentSp, &dqn, epsilon, true);
 
     epoch_total_score += train_score;
     if (dqn.current_iteration() > 0)  // started training?

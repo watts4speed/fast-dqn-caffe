@@ -1,4 +1,5 @@
 #include "fast_dqn.h"
+#include "environment.h"
 #include <glog/logging.h>
 #include <algorithm>
 #include <iostream>
@@ -11,77 +12,9 @@
 namespace fast_dqn {
 
 
-FrameDataSp PreprocessScreen(ALEInterface* ale) {
-  ALEScreen raw_screen = ale->getScreen();
-  size_t rawFrameWidth = raw_screen.width();
-  size_t rawFrameHeight = raw_screen.height();
-  std::vector<pixel_t> raw_pixels(rawFrameWidth*rawFrameHeight);
-  ale->getScreenGrayscale(raw_pixels);
-
-  auto screen = std::make_shared<FrameData>();
-  assert(rawFrameHeight > rawFrameWidth);
-  const auto x_ratio = rawFrameWidth / static_cast<double>(kCroppedFrameSize);
-  const auto y_ratio = rawFrameHeight / static_cast<double>(kCroppedFrameSize);
-  for (auto i = 0; i < kCroppedFrameSize; ++i) {
-    for (auto j = 0; j < kCroppedFrameSize; ++j) {
-      const auto first_x = static_cast<int>(std::floor(j * x_ratio));
-      const auto last_x = static_cast<int>(std::floor((j + 1) * x_ratio));
-      const auto first_y = static_cast<int>(std::floor(i * y_ratio));
-      auto last_y = static_cast<int>(std::floor((i + 1) * y_ratio));
-      if (last_y >= rawFrameHeight) {
-        last_y = rawFrameHeight-1;
-      }
-      auto x_sum = 0.0;
-      auto y_sum = 0.0;
-      uint8_t resulting_color = 0.0;
-      for (auto x = first_x; x <= last_x; ++x) {
-        double x_ratio_in_resulting_pixel = 1.0;
-        if (x == first_x) {
-          x_ratio_in_resulting_pixel = x + 1 - j * x_ratio;
-        } else if (x == last_x) {
-          x_ratio_in_resulting_pixel = x_ratio * (j + 1) - x;
-        }
-        assert(
-            x_ratio_in_resulting_pixel >= 0.0 &&
-            x_ratio_in_resulting_pixel <= 1.0);
-        for (auto y = first_y; y <= last_y; ++y) {
-          double y_ratio_in_resulting_pixel = 1.0;
-          if (y == first_y) {
-            y_ratio_in_resulting_pixel = y + 1 - i * y_ratio;
-          } else if (y == last_y) {
-            y_ratio_in_resulting_pixel = y_ratio * (i + 1) - y;
-          }
-          assert(
-              y_ratio_in_resulting_pixel >= 0.0 &&
-              y_ratio_in_resulting_pixel <= 1.0);
-          const auto grayscale =
-            raw_pixels[static_cast<int>(y * rawFrameWidth + x)];
-          resulting_color +=
-              (x_ratio_in_resulting_pixel / x_ratio) *
-              (y_ratio_in_resulting_pixel / y_ratio) * grayscale;
-        }
-      }
-      (*screen)[i * kCroppedFrameSize + j] = resulting_color;
-    }
-  }
-  return screen;
-}
-
-
-std::string DrawFrame(const FrameData& frame) {
-  std::ostringstream o;
-  for (auto row = 0; row < kCroppedFrameSize; ++row) {
-    for (auto col = 0; col < kCroppedFrameSize; ++col) {
-      o << std::hex <<
-          static_cast<int>(frame[row * kCroppedFrameSize + col] / 16);
-    }
-    o << std::endl;
-  }
-  return o.str();
-}
-
 std::string PrintQValues(
-    const std::vector<float>& q_values, const ActionVect& actions) {
+    EnvironmentSp environmentSp,
+    const std::vector<float>& q_values, const Environment::ActionVec& actions) {
   assert(!q_values.empty());
   assert(!actions.empty());
   assert(q_values.size() == actions.size());
@@ -90,7 +23,7 @@ std::string PrintQValues(
   for (auto i = 0; i < q_values.size(); ++i) {
     const auto a_str =
         boost::algorithm::replace_all_copy(
-            action_to_string(actions[i]), "PLAYER_A_", "");
+            environmentSp->action_to_string(actions[i]), "PLAYER_A_", "");
     const auto q_str = std::to_string(q_values[i]);
     const auto column_size = std::max(a_str.size(), q_str.size()) + 1;
     actions_buf.width(column_size);
@@ -113,7 +46,7 @@ const State Transition::GetNextState() const {
     return state_;
   } else {
     State state_clone;
-    
+
     for (int i = 0; i < kInputFrameCount - 1; ++i)
       state_clone[i] = state_[i + 1];
     state_clone[kInputFrameCount - 1] = next_frame_;
@@ -171,15 +104,17 @@ void Fast_DQN::Initialize() {
 }
 
 
-Action Fast_DQN::SelectAction(const State& frames, const double epsilon) {
+Environment::ActionCode Fast_DQN::SelectAction(const State& frames, 
+                                               const double epsilon) {
   return SelectActions(InputStateBatch{{frames}}, epsilon)[0];
 }
 
-ActionVect Fast_DQN::SelectActions(const InputStateBatch& frames_batch,
+Environment::ActionVec Fast_DQN::SelectActions(
+                              const InputStateBatch& frames_batch,
                               const double epsilon) {
   CHECK(epsilon <= 1.0 && epsilon >= 0.0);
   CHECK_LE(frames_batch.size(), kMinibatchSize);
-  ActionVect actions(frames_batch.size());
+  Environment::ActionVec actions(frames_batch.size());
   if (std::uniform_real_distribution<>(0.0, 1.0)(random_engine_) < epsilon) {
     // Select randomly
     for (int i = 0; i < actions.size(); ++i) {
@@ -231,7 +166,7 @@ std::vector<ActionValue> Fast_DQN::SelectActionGreedily(
   const auto q_values_blob = net->blob_by_name(q_values_blob_name);
   for (auto i = 0; i < last_frames_batch.size(); ++i) {
     // Get the Q values from the net
-    const auto action_evaluator = [&](Action action) {
+    const auto action_evaluator = [&](Environment::ActionCode action) {
       const auto q = q_values_blob->data_at(i, static_cast<int>(action), 0, 0);
       assert(!std::isnan(q));
       return q;
@@ -317,7 +252,8 @@ void Fast_DQN::Update() {
     target_input[i * kOutputCount + static_cast<int>(action)] = target;
     filter_input[i * kOutputCount + static_cast<int>(action)] = 1;
     if (verbose_)
-      VLOG(1) << "filter:" << action_to_string(action) << " target:" << target;
+      VLOG(1) << "filter:" << environmentSp_->action_to_string(action) 
+        << " target:" << target;
     for (auto j = 0; j < kInputFrameCount; ++j) {
       const State& state = transition.GetState();
       const auto& frame_data = state[j];

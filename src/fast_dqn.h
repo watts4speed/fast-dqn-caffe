@@ -1,7 +1,7 @@
 #ifndef SRC_FAST_DQN_H_
 #define SRC_FAST_DQN_H_
 
-#include <ale_interface.hpp>
+#include "environment.h"
 #include <caffe/caffe.hpp>
 #include <memory>
 #include <random>
@@ -48,10 +48,10 @@ using FilterLayerInputData = std::array<float, kMinibatchSize * kOutputCount>;
 
 
 typedef struct ActionValue {
-  ActionValue(const Action _action, const float _q_value) : 
+  ActionValue(const Environment::ActionCode _action, const float _q_value) : 
     action(_action), q_value(_q_value) {
     }
-  const Action action;
+  const Environment::ActionCode action;
   const float q_value;
 } ActionValue;
 
@@ -62,7 +62,7 @@ typedef struct ActionValue {
 class Transition {
  public:
 
-  Transition ( const State state, Action action,
+  Transition ( const State state, Environment::ActionCode action,
                 double reward, FrameDataSp next_frame ) :
       state_ ( state ),
       action_ ( action ),
@@ -76,13 +76,13 @@ class Transition {
   
   const State& GetState() const { return state_; }
   
-  Action GetAction() const { return action_; }
+  Environment::ActionCode GetAction() const { return action_; }
   
   double GetReward() const { return reward_; }
 
  private:
     const State state_;
-    Action action_;
+    Environment::ActionCode action_;
     double reward_;
     FrameDataSp next_frame_;
 };
@@ -94,11 +94,13 @@ typedef std::shared_ptr<Transition> TransitionSp;
 class Fast_DQN {
  public:
   Fast_DQN(
-      const ActionVect& legal_actions,
+      EnvironmentSp environmentSp,
+      const Environment::ActionVec& legal_actions,
       const std::string& solver_param,
       const int replay_memory_capacity,
       const double gamma,
       const bool verbose) :
+        environmentSp_(environmentSp),
         legal_actions_(legal_actions),
         solver_param_(solver_param),
         replay_memory_capacity_(replay_memory_capacity),
@@ -122,7 +124,7 @@ class Fast_DQN {
   /**
    * Select an action by epsilon-greedy.
    */
-  Action SelectAction(const State& input_frames, double epsilon);
+  Environment::ActionCode SelectAction(const State& input_frames, double epsilon);
 
   /**
    * Add a transition to replay memory
@@ -153,7 +155,7 @@ class Fast_DQN {
   using MemoryDataLayerSp = boost::shared_ptr<caffe::MemoryDataLayer<float>>;
 
 
-  ActionVect SelectActions(const InputStateBatch& frames_batch,
+  Environment::ActionVec SelectActions(const InputStateBatch& frames_batch,
                               const double epsilon);
   ActionValue SelectActionGreedily(NetSp net,
                                    const State& last_frames);
@@ -179,7 +181,8 @@ class Fast_DQN {
       const TargetLayerInputData& target_data,
       const FilterLayerInputData& filter_data);
 
-  const ActionVect legal_actions_;
+  EnvironmentSp environmentSp_;
+  const Environment::ActionVec legal_actions_;
   const int replay_memory_capacity_;
   const double gamma_;
   std::deque<Transition> replay_memory_;
@@ -197,15 +200,6 @@ class Fast_DQN {
   bool verbose_;
 };
 
-/**
- * Preprocess an ALE screen (downsampling & grayscaling)
- */
-FrameDataSp PreprocessScreen(ALEInterface* ale);
-
-/**
- * Draw a frame as a string
- */
-std::string DrawFrame(const FrameData& frame);
 
 }  // namespace fast_dqn
 

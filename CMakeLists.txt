@@ -10,7 +10,8 @@ set(ALE_ROOT_DIR "~/dev/Arcade-Learning-Environment")
 set(CAFFE_ROOT_DIR "~/dev/caffe")
 list(APPEND CMAKE_PREFIX_PATH ${ALE_ROOT_DIR} ${CAFFE_ROOT_DIR})
 
-add_executable(fast_dqn src/fast_dqn_main.cpp src/fast_dqn.cpp)
+add_executable(fast_dqn src/fast_dqn_main.cpp src/fast_dqn.cpp 
+  src/ale_environment.cpp)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -march=native -Wno-deprecated-declarations")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules")
 
