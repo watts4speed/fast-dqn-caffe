@@ -106,6 +106,14 @@ same plot.  If you leave the plotting program running across multiple training s
 
 In the plot above, three different training runs for pong.bin are shown.  The lines represent a running average of the episode scores.  The blue line is the current training run.  It takes about 15 minutes on a Titan-X with an X99 CPU for results to show up with the current code near episode 30.
 
+## Running trained models
+
+The models are snapshoted into the subdirectory ./model.  To run a trained model that was snapshotted after 1000000 steps for pong for example, use the following command:
+
+```
+build/dqn -rom ~/roms/pong.bin -evaluate -gui -model ~/model/dqn_iter_1000000.caffemodel
+```
+
 ##Training details:
 
 During training the loss is clipped to 10.
